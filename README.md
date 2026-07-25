@@ -22,7 +22,7 @@ only serves the frontend, not the serverless routes):
 npm install -g vercel
 cd client
 npm install
-cp .env.example .env      # fill in UPSTASH_REDIS_REST_URL / TOKEN, see below
+cp .env.example .env      # fill in Redis credentials, see below
 vercel dev                 # serves frontend + /api on one port
 ```
 
@@ -33,7 +33,8 @@ tab (or another device on the same network/Wi-Fi) to join with the room code.
 
 Create a free database at [upstash.com](https://upstash.com) (Redis →
 Create Database), then copy its **REST URL** and **REST Token** from the
-database's API section into `client/.env`.
+database's API section into `client/.env` as `UPSTASH_REDIS_REST_URL` /
+`UPSTASH_REDIS_REST_TOKEN`.
 
 ## Deploying
 
@@ -41,12 +42,14 @@ database's API section into `client/.env`.
 2. In Vercel, **Add New Project**, import the repo, and set **Root Directory**
    to `client`. Framework preset Vite is auto-detected; build/output defaults
    are fine.
-3. Create a Redis database at [upstash.com](https://upstash.com) (or use
-   Vercel's Upstash integration from the Marketplace, which wires the env
-   vars in automatically).
-4. Add environment variables on the Vercel project:
-   - `UPSTASH_REDIS_REST_URL`
-   - `UPSTASH_REDIS_REST_TOKEN`
+3. In the project's **Storage** tab, **Browse Storage** and pick **Upstash**
+   (not the separate "Redis" option — that's a TCP-based Redis Cloud
+   integration meant for long-running servers, not serverless functions).
+   Create a Redis database and connect it to the project.
+4. That's it for env vars — the integration injects its own credentials
+   automatically (typically `KV_REST_API_URL` / `KV_REST_API_TOKEN`, a
+   naming holdover from when this integration was called Vercel KV; the
+   code reads either that pair or the plain `UPSTASH_REDIS_REST_*` names).
 5. Deploy. Since the API routes are same-origin with the frontend, there's no
    CORS config and no second service to stand up.
 
