@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { getRoom, startGame, nextQuestion } from "./api";
 import { usePolling } from "./usePolling";
 import Leaderboard from "./Leaderboard";
@@ -52,9 +53,12 @@ export default function Host({ code, hostToken, onExit }) {
         <>
           <p className="eyebrow">Room code</p>
           <h1 className="room-code">{code}</h1>
+
+          <div className="qr-card">
+            <QRCodeSVG value={joinUrl} size={192} marginSize={2} />
+          </div>
           <p className="join-hint">
-            Players join at <strong>{window.location.host}</strong> with this code, or scan/visit{" "}
-            <span className="join-url">{joinUrl}</span>
+            Scan to join, or go to <strong>{window.location.host}</strong> and enter the code.
           </p>
 
           <h2 className="section-title">Players ({players.length})</h2>

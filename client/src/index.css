@@ -73,9 +73,12 @@ body {
   font-size: 0.9rem;
 }
 
-.join-url {
-  word-break: break-all;
-  color: var(--accent);
+.qr-card {
+  align-self: center;
+  background: #fff;
+  padding: 1rem;
+  border-radius: 16px;
+  line-height: 0;
 }
 
 .section-title {
