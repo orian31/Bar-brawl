@@ -1,63 +1,42 @@
-import { useEffect, useState } from "react";
-import { socket, emitAsync } from "./socket";
+import { useEffect, useRef, useState } from "react";
+import { getRoom, submitAnswer } from "./api";
+import { usePolling } from "./usePolling";
 import Leaderboard from "./Leaderboard";
 import Timer from "./Timer";
 
-export default function Player({ code, name, onExit }) {
-  const [players, setPlayers] = useState([]);
-  const [phase, setPhase] = useState("lobby");
-  const [question, setQuestion] = useState(null);
+const POLL_MS = 1000;
+
+export default function Player({ code, playerId, name, onExit }) {
+  const [state, setState] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [reveal, setReveal] = useState(null);
   const [error, setError] = useState("");
+  const lastQuestionIndex = useRef(-1);
 
-  useEffect(() => {
-    function onLobbyUpdate({ players }) {
-      setPlayers(players);
-    }
-    function onQuestion(q) {
-      setQuestion(q);
-      setSelected(null);
-      setReveal(null);
-      setPhase("question");
-    }
-    function onReveal(data) {
-      setReveal(data);
-      setPlayers(data.players);
-      setPhase("reveal");
-    }
-    function onOver(data) {
-      setPlayers(data.players);
-      setPhase("over");
-    }
-    function onRoomClosed() {
+  usePolling(async () => {
+    const res = await getRoom(code, playerId);
+    if (res.ok) {
+      if (res.question && res.question.index !== lastQuestionIndex.current) {
+        lastQuestionIndex.current = res.question.index;
+        setSelected(null);
+      }
+      setState(res);
+    } else if (res.error === "Room not found") {
       setError("The host ended the game");
-      setPhase("lobby");
     }
-
-    socket.on("lobby:update", onLobbyUpdate);
-    socket.on("game:question", onQuestion);
-    socket.on("game:reveal", onReveal);
-    socket.on("game:over", onOver);
-    socket.on("room:closed", onRoomClosed);
-
-    return () => {
-      socket.off("lobby:update", onLobbyUpdate);
-      socket.off("game:question", onQuestion);
-      socket.off("game:reveal", onReveal);
-      socket.off("game:over", onOver);
-      socket.off("room:closed", onRoomClosed);
-    };
-  }, []);
+  }, POLL_MS);
 
   async function pickChoice(i) {
-    if (selected !== null) return;
+    if (selected !== null || state?.hasAnswered) return;
     setSelected(i);
-    const res = await emitAsync("player:answer", { choice: i });
-    if (!res.ok) setError(res.error);
+    const res = await submitAnswer(code, playerId, i);
+    if (res.ok) setState(res);
+    else setError(res.error);
   }
 
-  const myScore = players.find((p) => p.name === name)?.score;
+  const phase = state?.phase || "lobby";
+  const players = state?.players || [];
+  const myScore = players.find((p) => p.id === playerId)?.score;
+  const locked = selected !== null || Boolean(state?.hasAnswered);
 
   return (
     <div className="screen player-screen">
@@ -81,19 +60,19 @@ export default function Player({ code, name, onExit }) {
         </>
       )}
 
-      {phase === "question" && question && (
+      {phase === "question" && state.question && (
         <>
           <p className="eyebrow">
-            Question {question.index + 1} / {question.total}
+            Question {state.question.index + 1} / {state.question.total}
           </p>
-          <h1 className="question-text">{question.text}</h1>
-          <Timer durationMs={question.durationMs} />
+          <h1 className="question-text">{state.question.text}</h1>
+          <Timer startedAt={state.question.startedAt} durationMs={state.question.durationMs} now={state.now} />
           <ol className="choice-list">
-            {question.choices.map((c, i) => (
+            {state.question.choices.map((c, i) => (
               <li key={i}>
                 <button
                   className={`choice-btn ${selected === i ? "selected" : ""}`}
-                  disabled={selected !== null}
+                  disabled={locked}
                   onClick={() => pickChoice(i)}
                 >
                   {c}
@@ -101,21 +80,25 @@ export default function Player({ code, name, onExit }) {
               </li>
             ))}
           </ol>
-          {selected !== null && <p className="muted">Answer locked in — waiting on the rest of the bar…</p>}
+          {locked && <p className="muted">Answer locked in — waiting on the rest of the bar…</p>}
         </>
       )}
 
-      {phase === "reveal" && reveal && question && (
+      {phase === "reveal" && state.question && (
         <>
           <p className="eyebrow">Answer</p>
-          <h1 className={`question-text ${selected === reveal.correctIndex ? "correct" : "incorrect"}`}>
-            {question.choices[reveal.correctIndex]}
+          <h1 className={`question-text ${selected === state.correctIndex ? "correct" : "incorrect"}`}>
+            {state.question.choices[state.correctIndex]}
           </h1>
           <p className="muted">
-            {selected === reveal.correctIndex ? "Nice, you got it!" : "Better luck next round."}
+            {selected === null
+              ? ""
+              : selected === state.correctIndex
+                ? "Nice, you got it!"
+                : "Better luck next round."}
             {typeof myScore === "number" && ` Your score: ${myScore}`}
           </p>
-          <Leaderboard players={reveal.players} />
+          <Leaderboard players={players} />
         </>
       )}
 

@@ -1,16 +1,24 @@
 import { useEffect, useState } from "react";
 
-export default function Timer({ durationMs }) {
+/**
+ * Countdown bar anchored to server time so it stays in sync across polls
+ * and reloads, instead of restarting from whatever moment this component
+ * happened to mount.
+ */
+export default function Timer({ startedAt, durationMs, now }) {
+  const [clockOffset] = useState(() => now - Date.now());
   const [fraction, setFraction] = useState(1);
 
   useEffect(() => {
-    const start = Date.now();
-    const id = setInterval(() => {
-      const elapsed = Date.now() - start;
+    function tick() {
+      const estimatedServerNow = Date.now() + clockOffset;
+      const elapsed = estimatedServerNow - startedAt;
       setFraction(Math.max(0, 1 - elapsed / durationMs));
-    }, 100);
+    }
+    tick();
+    const id = setInterval(tick, 100);
     return () => clearInterval(id);
-  }, [durationMs]);
+  }, [startedAt, durationMs, clockOffset]);
 
   return (
     <div className="timer-track">

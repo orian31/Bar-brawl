@@ -1,76 +1,82 @@
 # Bar Brawl 🍻
 
-A real-time pub trivia party game. One person hosts on a big screen and gets a
+A pub trivia party game. One person hosts on a big screen and gets a
 4-letter room code; everyone else joins on their phone, answers multiple-choice
 questions against the clock, and climbs a live leaderboard.
 
 ## Project layout
 
-- `server/` — Node + Express + Socket.IO backend. Holds room/game state in memory.
-- `client/` — React (Vite) frontend. Host screen + player screen in one app.
+Everything deploys as a single Vercel project — no separate backend host.
+
+- `client/src/` — React (Vite) frontend. Host screen + player screen in one app.
+- `client/api/` — Vercel serverless functions (Node runtime) that hold room
+  state in Upstash Redis. The frontend polls these once a second; there's no
+  persistent server process to run.
 
 ## Run it locally
 
-```bash
-# terminal 1
-cd server
-npm install
-npm start          # listens on :4000
+You need the Vercel CLI to run the `api/` functions locally (plain `vite dev`
+only serves the frontend, not the serverless routes):
 
-# terminal 2
+```bash
+npm install -g vercel
 cd client
 npm install
-cp .env.example .env   # VITE_SERVER_URL=http://localhost:4000
-npm run dev             # opens on :5173
+cp .env.example .env      # fill in UPSTASH_REDIS_REST_URL / TOKEN, see below
+vercel dev                 # serves frontend + /api on one port
 ```
 
 Open the dev URL in one tab, click **Host a game**, then open it in another
-tab (or another device on the same network) to join with the room code.
+tab (or another device on the same network/Wi-Fi) to join with the room code.
+
+### Getting a Redis instance for local dev
+
+Create a free database at [upstash.com](https://upstash.com) (Redis →
+Create Database), then copy its **REST URL** and **REST Token** from the
+database's API section into `client/.env`.
 
 ## Deploying
 
-The frontend is static and the backend needs a long-lived process (Socket.IO
-keeps open connections), so they deploy to two different places:
+1. Push this repo to GitHub (already done if you're reading this from the repo).
+2. In Vercel, **Add New Project**, import the repo, and set **Root Directory**
+   to `client`. Framework preset Vite is auto-detected; build/output defaults
+   are fine.
+3. Create a Redis database at [upstash.com](https://upstash.com) (or use
+   Vercel's Upstash integration from the Marketplace, which wires the env
+   vars in automatically).
+4. Add environment variables on the Vercel project:
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
+5. Deploy. Since the API routes are same-origin with the frontend, there's no
+   CORS config and no second service to stand up.
 
-### 1. Server → Render
-
-1. Push this repo to GitHub.
-2. In Render, choose **New → Blueprint** and point it at this repo — it will
-   pick up `render.yaml` and create a `bar-brawl-server` web service rooted at
-   `server/`.
-3. Set the `CLIENT_ORIGIN` env var to your deployed client URL (e.g.
-   `https://bar-brawl.vercel.app`) once you have it, so CORS allows it.
-4. Note the resulting server URL, e.g. `https://bar-brawl-server.onrender.com`.
-
-(Any host that runs a persistent Node process works too — Fly.io, Railway,
-a VPS, etc. Just run `npm install && npm start` inside `server/`.)
-
-### 2. Client → Vercel (or Netlify)
-
-1. In Vercel, **Add New Project**, import this repo, and set the project's
-   **Root Directory** to `client`.
-2. Framework preset: Vite (auto-detected). Build command `npm run build`,
-   output directory `dist` (defaults are fine).
-3. Add an environment variable `VITE_SERVER_URL` set to your Render server
-   URL from step 1.
-4. Deploy. Vercel will give you a URL like `https://bar-brawl.vercel.app`.
-5. Go back to Render and set `CLIENT_ORIGIN` to that exact URL, then redeploy
-   the server so CORS matches.
-
-Netlify works the same way: base directory `client`, build command
-`npm run build`, publish directory `client/dist`, same `VITE_SERVER_URL` env
-var, and `client/vercel.json`'s SPA rewrite has an equivalent Netlify
-`_redirects` need if you go that route (`/* /index.html 200`).
+Netlify doesn't run this kind of Node serverless function the same way, so
+Vercel is the simpler path for this project as structured.
 
 ## How the game works
 
-1. Host taps **Host a game** → gets a room code.
+1. Host taps **Host a game** → gets a room code and a host token (kept in
+   memory in the browser tab).
 2. Players open the site, enter the code + their name, and land in the lobby.
+   They get a player id back, generated server-side.
 3. Host taps **Start game**; everyone gets the same question at the same time
-   with a 15s timer.
+   with a 15s timer, anchored to a server timestamp so it stays in sync even
+   across polls.
 4. Answers score higher the faster they're correct. Once everyone's answered
-   (or the timer runs out) the correct answer and updated leaderboard reveal.
+   (or the timer runs out), the next poll from any client resolves the round:
+   correct answer revealed, scores applied exactly once via an optimistic
+   Redis transaction, updated leaderboard shown.
 5. Host advances through 6 rounds, then a final leaderboard is shown.
 
-Room state lives in server memory, so restarting the server clears all active
-games — fine for a single bar night, not meant for long-term persistence.
+Room state lives in Redis with a 6-hour expiry, so idle games clean
+themselves up — nothing to restart or manage between bar nights.
+
+## Why polling instead of WebSockets
+
+The game used to run on a Socket.IO server, but that needs a long-lived
+process to hold open connections — something Vercel's serverless functions
+don't do (each request runs in its own short-lived, stateless invocation).
+Rather than stand up a second always-on host just for sockets, the game
+state moved to Redis and the client polls for updates every second, which is
+plenty responsive for a trivia game and keeps the whole thing on one
+platform.

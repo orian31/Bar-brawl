@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { socket, emitAsync } from "./socket";
+import { useState } from "react";
+import { createRoom, joinRoom } from "./api";
 import Home from "./Home";
 import Host from "./Host";
 import Player from "./Player";
@@ -12,20 +12,18 @@ function initialCodeFromUrl() {
 export default function App() {
   const [view, setView] = useState("home"); // home | host | player
   const [roomCode, setRoomCode] = useState("");
+  const [hostToken, setHostToken] = useState("");
+  const [playerId, setPlayerId] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
 
-  useEffect(() => {
-    socket.connect();
-    return () => socket.disconnect();
-  }, []);
-
   async function handleHost() {
     setJoinError("");
-    const res = await emitAsync("host:create", {});
+    const res = await createRoom();
     if (res.ok) {
       setRoomCode(res.code);
+      setHostToken(res.hostToken);
       setView("host");
     } else {
       setJoinError(res.error || "Could not create room");
@@ -39,10 +37,11 @@ export default function App() {
     }
     setJoining(true);
     setJoinError("");
-    const res = await emitAsync("player:join", { code, name });
+    const res = await joinRoom(code.toUpperCase(), name);
     setJoining(false);
     if (res.ok) {
-      setRoomCode(res.code);
+      setRoomCode(code.toUpperCase());
+      setPlayerId(res.playerId);
       setPlayerName(name);
       setView("player");
     } else {
@@ -51,15 +50,15 @@ export default function App() {
   }
 
   function handleExit() {
-    socket.disconnect();
-    socket.connect();
     setRoomCode("");
+    setHostToken("");
+    setPlayerId("");
     setJoinError("");
     setView("home");
   }
 
-  if (view === "host") return <Host code={roomCode} onExit={handleExit} />;
-  if (view === "player") return <Player code={roomCode} name={playerName} onExit={handleExit} />;
+  if (view === "host") return <Host code={roomCode} hostToken={hostToken} onExit={handleExit} />;
+  if (view === "player") return <Player code={roomCode} playerId={playerId} name={playerName} onExit={handleExit} />;
 
   return (
     <Home

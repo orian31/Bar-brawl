@@ -41,7 +41,7 @@ export const QUESTIONS = [
     answer: 2
   },
   {
-    text: "What's the name for a shot of espresso dropped into a glass of beer... wait, that's not a thing. What IS a boilermaker?",
+    text: "What is a boilermaker?",
     choices: ["Beer + whiskey shot", "Coffee + rum", "Cider + gin", "Wine + soda"],
     answer: 0
   },
