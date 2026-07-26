@@ -3,9 +3,21 @@ async function request(path, options) {
     headers: { "Content-Type": "application/json" },
     ...options
   });
-  const data = await res.json().catch(() => ({ ok: false, error: "Bad response" }));
-  if (!res.ok && !("ok" in data)) return { ok: false, error: `Request failed (${res.status})` };
-  return data;
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text);
+    if (!res.ok && !("ok" in data)) return { ok: false, error: `Request failed (${res.status})` };
+    return data;
+  } catch {
+    // The API always returns JSON, so a non-JSON body (HTML, usually) means
+    // something in front of it intercepted the request — most commonly
+    // Vercel's Deployment Protection redirecting to a login page.
+    const looksLikeAuthWall = /vercel|authenticat/i.test(text);
+    const error = looksLikeAuthWall
+      ? `Blocked by Vercel authentication (HTTP ${res.status}) — check Deployment Protection settings`
+      : `Unexpected response (HTTP ${res.status})`;
+    return { ok: false, error };
+  }
 }
 
 export function createRoom() {
